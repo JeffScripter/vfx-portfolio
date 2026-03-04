@@ -53,6 +53,15 @@ body, html {
     text-decoration: underline;
 }
 
+.card {
+    backdrop-filter: blur(7px) saturate(119%);
+    -webkit-backdrop-filter: blur(7px) saturate(119%);
+    background-color: rgba(17, 25, 40, 0);
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.125);
+}
+
+
 .video-container {
     position: relative;
     padding-bottom: 56.25%; /* 16:9 aspect ratio */
