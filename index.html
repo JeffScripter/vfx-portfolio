@@ -8,80 +8,104 @@
 </head>
 <body>
         <!-- required: a container somewhere in your HTML -->
-    <div id="bg-canvas-container"></div>
+        <!-- Paste this after THREE.js is loaded -->
+    <div id="bg-canvas-container" style="position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:-1;"></div>
     
     <script>
-    // metal fluid background shader - drop this after THREE is loaded
-    window.addEventListener("DOMContentLoaded", () => {
-      const container = document.getElementById("bg-canvas-container");
+    (function(){
+      // Safety: wrap so it doesn't conflict
+      const container = document.getElementById('bg-canvas-container');
+    
+      // Small on-screen debug panel
+      const debug = document.createElement('div');
+      debug.style.position = 'fixed';
+      debug.style.left = '8px';
+      debug.style.top = '8px';
+      debug.style.zIndex = '999999';
+      debug.style.padding = '8px 10px';
+      debug.style.background = 'rgba(0,0,0,0.6)';
+      debug.style.color = 'white';
+      debug.style.fontFamily = 'monospace';
+      debug.style.fontSize = '12px';
+      debug.style.lineHeight = '1.3';
+      debug.style.borderRadius = '6px';
+      debug.style.maxWidth = '320px';
+      debug.style.whiteSpace = 'pre-wrap';
+      debug.innerText = 'initializing...';
+      document.body.appendChild(debug);
+    
+      // If container not found, create fallback and bail
       if (!container) {
-        console.error("#bg-canvas-container not found");
+        debug.innerText = '#bg-canvas-container NOT FOUND\nShowing fallback gradient.\n\nPlease add <div id="bg-canvas-container"></div> to your HTML.';
+        document.body.style.background = 'linear-gradient(135deg, #111 0%, #222 50%, #000 100%)';
         return;
       }
     
-      // --- ensure container styles (if you haven't already added CSS) ---
-      container.style.position = "fixed";
-      container.style.top = "0";
-      container.style.left = "0";
-      container.style.width = "100vw";
-      container.style.height = "100vh";
-      container.style.zIndex = "-1";
-      document.body.style.margin = "0";
-      document.body.style.background = "black";
+      // Quick check for THREE
+      if (typeof THREE === 'undefined') {
+        debug.innerText = 'THREE not found — falling back to CSS gradient.\nAdd Three.js before this script.';
+        document.body.style.background = 'linear-gradient(135deg,#030305 0%, #111 40%, #000 100%)';
+        return;
+      }
+    
+      // Ensure container CSS if missing
+      container.style.position = container.style.position || 'fixed';
+      container.style.top = container.style.top || '0';
+      container.style.left = container.style.left || '0';
+      container.style.width = container.style.width || '100vw';
+      container.style.height = container.style.height || '100vh';
+      container.style.zIndex = container.style.zIndex || '-1';
+      document.body.style.margin = '0';
+      document.body.style.background = 'black';
     
       // THREE setup
       const scene = new THREE.Scene();
-      const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+      const camera = new THREE.OrthographicCamera(-1,1,1,-1,0,1);
     
-      const renderer = new THREE.WebGLRenderer({ antialias: true });
-      renderer.setClearColor(0x000000, 1.0);
+      const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+      renderer.setClearColor(0x000000, 1);
+      // Respect devicePixelRatio but keep it manageable
       renderer.setPixelRatio(window.devicePixelRatio || 1);
     
-      // set initial size to container CSS pixels and attach
       function updateRendererSize() {
         const w = Math.max(1, container.clientWidth);
         const h = Math.max(1, container.clientHeight);
-        renderer.setSize(w, h, false); // don't update style automatically
-        renderer.domElement.style.width = "100%";
-        renderer.domElement.style.height = "100%";
+        // use true so renderer updates canvas width/height (drawing buffer)
+        renderer.setSize(w, h, true);
+        renderer.domElement.style.width = '100%';
+        renderer.domElement.style.height = '100%';
       }
       updateRendererSize();
       container.appendChild(renderer.domElement);
     
-      // uniforms
+      // uniforms with debug toggle (start with debug on)
       const uniforms = {
         u_time: { value: 0.0 },
         u_resolution: { value: new THREE.Vector2(renderer.domElement.width, renderer.domElement.height) },
-        // debug toggle (0 = normal, 1 = show simple UV gradient)
-        u_debug: { value: 0.0 }
+        u_debug: { value: 1.0 } // 1 => show plain uv gradient for debugging
       };
     
       // plane
-      const geom = new THREE.PlaneGeometry(2, 2);
+      const geom = new THREE.PlaneGeometry(2,2);
     
-      // shader material
+      // shader material (debug gradient + metal fluid below)
       const mat = new THREE.ShaderMaterial({
         uniforms,
-        vertexShader: `
-          void main() {
-            gl_Position = vec4(position, 1.0);
-          }
-        `,
+        vertexShader: `void main(){ gl_Position = vec4(position,1.0); }`,
         fragmentShader: `
           precision highp float;
           uniform vec2 u_resolution;
           uniform float u_time;
           uniform float u_debug;
     
-          // ---- simplex noise (2D) ----
+          // simplex noise (same compact implementation)
           vec3 mod289(vec3 x){return x - floor(x*(1.0/289.0))*289.0;}
           vec2 mod289(vec2 x){return x - floor(x*(1.0/289.0))*289.0;}
           vec3 permute(vec3 x){return mod289(((x*34.0)+1.0)*x);}
-    
           float snoise(vec2 v){
-            const vec4 C = vec4(0.211324865405187, 0.366025403784439, -0.577350269189626, 0.024390243902439);
-            vec2 i = floor(v + dot(v, C.yy));
-            vec2 x0 = v - i + dot(i, C.xx);
+            const vec4 C = vec4(0.211324865405187,0.366025403784439,-0.577350269189626,0.024390243902439);
+            vec2 i = floor(v + dot(v,C.yy));
+            vec2 x0 = v - i + dot(i,C.xx);
             vec2 i1 = (x0.x > x0.y) ? vec2(1.0,0.0) : vec2(0.0,1.0);
             vec4 x12 = x0.xyxy + C.xxzz; x12.xy -= i1;
             i = mod289(i);
@@ -96,57 +120,41 @@
             vec3 g;
             g.x = a0.x * x0.x + h.x * x0.y;
             g.yz = a0.yz * x12.xz + h.yz * x12.yw;
-            return 130.0 * dot(m, g);
+            return 130.0 * dot(m,g);
           }
     
-          // ---- main ----
-          void main() {
-            vec2 frag = gl_FragCoord.xy;
-            vec2 uv = frag / u_resolution.xy;
+          void main(){
+            vec2 uv = gl_FragCoord.xy / u_resolution.xy;
     
-            // debug gradient: green = x, red = y — helps ensure canvas/resolution working
+            // debug gradient mode (forced by u_debug)
             if (u_debug > 0.5) {
               gl_FragColor = vec4(uv.x, uv.y, 0.0, 1.0);
               return;
             }
     
-            // center + aspect correction
+            // metal fluid core
             vec2 p = uv - 0.5;
             p.x *= u_resolution.x / u_resolution.y;
     
-            // layered noise for flow
-            float n1 = snoise(p * 2.5 + u_time * 0.6);
-            float n2 = snoise(p * 5.5 - u_time * 0.8) * 0.5;
-            float n3 = snoise(p * 12.0 + u_time * 0.2) * 0.25;
-            float n = n1 + n2 + n3;
-    
-            // remap to 0..1
+            float n = snoise(p * 3.0 + u_time * 0.6);
+            n += snoise(p * 6.0 - u_time * 0.4) * 0.5;
+            n += snoise(p * 12.0 + u_time * 0.15) * 0.25;
             n = n * 0.5 + 0.5;
     
-            // widen the mask so it's easier to see
-            float fluid = smoothstep(0.33, 0.75, n);
-    
-            // create stronger specular highlights based on noise derivative
+            float fluid = smoothstep(0.35, 0.75, n);
             float spec = pow(smoothstep(0.55, 0.95, n), 2.0);
-    
-            // small rim/highlight using gradient of noise (fake curvature)
             float rim = smoothstep(0.45, 0.9, n) * (1.0 - smoothstep(0.6, 0.95, length(p)));
     
-            // chrome-ish coloration: bluish-white highlights + dark base
-            vec3 base = vec3(0.03); // very dark metal base
-            vec3 mid = vec3(0.15, 0.16, 0.17); // mid reflections
-            vec3 highlight = vec3(0.9, 0.95, 1.0);
+            vec3 base = vec3(0.03);
+            vec3 mid = vec3(0.16, 0.18, 0.20);
+            vec3 highlight = vec3(0.92, 0.95, 1.0);
     
-            // combine
             vec3 metal = base;
-            metal = mix(metal, mid, fluid * 0.9);
-            metal += highlight * spec * 0.9;
-            metal += vec3(0.12) * rim; // subtle rim
+            metal = mix(metal, mid, fluid * 0.95);
+            metal += highlight * spec * 0.95;
+            metal += vec3(0.14) * rim;
     
-            // subtle vignetting to keep edges black
             float vign = smoothstep(0.8, 0.2, length(uv - 0.5));
-    
-            // final mix with black background
             vec3 color = mix(vec3(0.0), metal, fluid) * vign;
     
             gl_FragColor = vec4(color, 1.0);
@@ -157,39 +165,74 @@
       const mesh = new THREE.Mesh(geom, mat);
       scene.add(mesh);
     
-      // animation loop
       let last = performance.now();
+    
+      // center-pixel read test (returns true if center pixel is NOT pure black)
+      function checkCenterPixel() {
+        try {
+          const gl = renderer.getContext();
+          const x = Math.max(0, Math.floor(renderer.domElement.width / 2));
+          const y = Math.max(0, Math.floor(renderer.domElement.height / 2));
+          const pixels = new Uint8Array(4);
+          // readPixels reads from bottom-left, so y is fine (we used drawingBuffer height)
+          gl.readPixels(x, y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+          const brightness = (pixels[0] + pixels[1] + pixels[2]) / 3;
+          return { ok: brightness > 2, pixels };
+        } catch (e) {
+          return { ok: false, error: e.message || String(e) };
+        }
+      }
+    
       function animate() {
         requestAnimationFrame(animate);
         const now = performance.now();
         const dt = (now - last) / 1000;
         last = now;
-        // speed control
-        uniforms.u_time.value += dt * 0.6;
-        renderer.render(scene, camera);
-      }
-      animate();
     
-      // resize logic
+        // advance time
+        uniforms.u_time.value += dt * 0.6;
+    
+        // render
+        renderer.render(scene, camera);
+    
+        // update debug info once per frame
+        const d = checkCenterPixel();
+        const lines = [
+          `THREE: ${typeof THREE !== 'undefined' ? 'loaded' : 'missing'}`,
+          `container CSS px: ${container.clientWidth} x ${container.clientHeight}`,
+          `canvas drawingBuffer: ${renderer.domElement.width} x ${renderer.domElement.height}`,
+          `devicePixelRatio: ${window.devicePixelRatio}`,
+          `u_debug: ${uniforms.u_debug.value}`,
+          d.error ? `pixelCheck error: ${d.error}` : `centerPixel ok: ${d.ok} (RGBA: ${d.pixels ? d.pixels[0] + ',' + d.pixels[1] + ',' + d.pixels[2] + ',' + d.pixels[3] : 'n/a'})`,
+          `Tip: click here to toggle debug gradient`
+        ];
+        debug.innerText = lines.join('\n');
+      }
+    
+      // toggle debug gradient when clicking the debug panel
+      debug.addEventListener('click', () => {
+        uniforms.u_debug.value = uniforms.u_debug.value > 0.5 ? 0.0 : 1.0;
+      });
+    
+      // resize handler
       function onResize() {
         updateRendererSize();
         uniforms.u_resolution.value.set(renderer.domElement.width, renderer.domElement.height);
       }
-      window.addEventListener("resize", onResize, { passive: true });
+      window.addEventListener('resize', onResize, { passive: true });
     
-      // quick helper you can toggle in console if you only see black:
-      // 1) turn on debug gradient: window.bgDebug(true)
-      // 2) check canvas pixel size: window.bgCheck()
-      window.bgDebug = (on) => { uniforms.u_debug.value = on ? 1.0 : 0.0; };
-      window.bgCheck = () => {
-        console.log("canvas CSS size:", container.clientWidth, container.clientHeight);
-        console.log("canvas drawingBufferSize:", renderer.domElement.width, renderer.domElement.height);
-        console.log("devicePixelRatio:", window.devicePixelRatio);
-      };
-    
-      // sanity set initially
+      // initial resize + start
       onResize();
-    });
+      animate();
+    
+      // extra: if u_debug is left on, instruct user visually
+      setTimeout(()=> {
+        if (uniforms.u_debug.value > 0.5) {
+          debug.innerText += '\n\nDebug gradient is ON — click this panel to turn it OFF and see the metal shader.';
+        }
+      }, 600);
+    
+    })(); // end wrapper
     </script>
 
     <main class="portfolio-container">
