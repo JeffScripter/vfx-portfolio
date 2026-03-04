@@ -7,8 +7,190 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <!-- This div will contain the WebGL canvas -->
+        <!-- required: a container somewhere in your HTML -->
     <div id="bg-canvas-container"></div>
+    
+    <script>
+    // metal fluid background shader - drop this after THREE is loaded
+    window.addEventListener("DOMContentLoaded", () => {
+      const container = document.getElementById("bg-canvas-container");
+      if (!container) {
+        console.error("#bg-canvas-container not found");
+        return;
+      }
+    
+      // --- ensure container styles (if you haven't already added CSS) ---
+      container.style.position = "fixed";
+      container.style.top = "0";
+      container.style.left = "0";
+      container.style.width = "100vw";
+      container.style.height = "100vh";
+      container.style.zIndex = "-1";
+      document.body.style.margin = "0";
+      document.body.style.background = "black";
+    
+      // THREE setup
+      const scene = new THREE.Scene();
+      const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setClearColor(0x000000, 1.0);
+      renderer.setPixelRatio(window.devicePixelRatio || 1);
+    
+      // set initial size to container CSS pixels and attach
+      function updateRendererSize() {
+        const w = Math.max(1, container.clientWidth);
+        const h = Math.max(1, container.clientHeight);
+        renderer.setSize(w, h, false); // don't update style automatically
+        renderer.domElement.style.width = "100%";
+        renderer.domElement.style.height = "100%";
+      }
+      updateRendererSize();
+      container.appendChild(renderer.domElement);
+    
+      // uniforms
+      const uniforms = {
+        u_time: { value: 0.0 },
+        u_resolution: { value: new THREE.Vector2(renderer.domElement.width, renderer.domElement.height) },
+        // debug toggle (0 = normal, 1 = show simple UV gradient)
+        u_debug: { value: 0.0 }
+      };
+    
+      // plane
+      const geom = new THREE.PlaneGeometry(2, 2);
+    
+      // shader material
+      const mat = new THREE.ShaderMaterial({
+        uniforms,
+        vertexShader: `
+          void main() {
+            gl_Position = vec4(position, 1.0);
+          }
+        `,
+        fragmentShader: `
+          precision highp float;
+          uniform vec2 u_resolution;
+          uniform float u_time;
+          uniform float u_debug;
+    
+          // ---- simplex noise (2D) ----
+          vec3 mod289(vec3 x){return x - floor(x*(1.0/289.0))*289.0;}
+          vec2 mod289(vec2 x){return x - floor(x*(1.0/289.0))*289.0;}
+          vec3 permute(vec3 x){return mod289(((x*34.0)+1.0)*x);}
+    
+          float snoise(vec2 v){
+            const vec4 C = vec4(0.211324865405187, 0.366025403784439, -0.577350269189626, 0.024390243902439);
+            vec2 i = floor(v + dot(v, C.yy));
+            vec2 x0 = v - i + dot(i, C.xx);
+            vec2 i1 = (x0.x > x0.y) ? vec2(1.0,0.0) : vec2(0.0,1.0);
+            vec4 x12 = x0.xyxy + C.xxzz; x12.xy -= i1;
+            i = mod289(i);
+            vec3 p = permute( permute( i.y + vec3(0.0, i1.y, 1.0 )) + i.x + vec3(0.0, i1.x, 1.0 ));
+            vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0);
+            m = m*m; m = m*m;
+            vec3 x = 2.0 * fract(p * C.www) - 1.0;
+            vec3 h = abs(x) - 0.5;
+            vec3 ox = floor(x + 0.5);
+            vec3 a0 = x - ox;
+            m *= 1.79284291400159 - 0.85373472095314 * ( a0*a0 + h*h );
+            vec3 g;
+            g.x = a0.x * x0.x + h.x * x0.y;
+            g.yz = a0.yz * x12.xz + h.yz * x12.yw;
+            return 130.0 * dot(m, g);
+          }
+    
+          // ---- main ----
+          void main() {
+            vec2 frag = gl_FragCoord.xy;
+            vec2 uv = frag / u_resolution.xy;
+    
+            // debug gradient: green = x, red = y — helps ensure canvas/resolution working
+            if (u_debug > 0.5) {
+              gl_FragColor = vec4(uv.x, uv.y, 0.0, 1.0);
+              return;
+            }
+    
+            // center + aspect correction
+            vec2 p = uv - 0.5;
+            p.x *= u_resolution.x / u_resolution.y;
+    
+            // layered noise for flow
+            float n1 = snoise(p * 2.5 + u_time * 0.6);
+            float n2 = snoise(p * 5.5 - u_time * 0.8) * 0.5;
+            float n3 = snoise(p * 12.0 + u_time * 0.2) * 0.25;
+            float n = n1 + n2 + n3;
+    
+            // remap to 0..1
+            n = n * 0.5 + 0.5;
+    
+            // widen the mask so it's easier to see
+            float fluid = smoothstep(0.33, 0.75, n);
+    
+            // create stronger specular highlights based on noise derivative
+            float spec = pow(smoothstep(0.55, 0.95, n), 2.0);
+    
+            // small rim/highlight using gradient of noise (fake curvature)
+            float rim = smoothstep(0.45, 0.9, n) * (1.0 - smoothstep(0.6, 0.95, length(p)));
+    
+            // chrome-ish coloration: bluish-white highlights + dark base
+            vec3 base = vec3(0.03); // very dark metal base
+            vec3 mid = vec3(0.15, 0.16, 0.17); // mid reflections
+            vec3 highlight = vec3(0.9, 0.95, 1.0);
+    
+            // combine
+            vec3 metal = base;
+            metal = mix(metal, mid, fluid * 0.9);
+            metal += highlight * spec * 0.9;
+            metal += vec3(0.12) * rim; // subtle rim
+    
+            // subtle vignetting to keep edges black
+            float vign = smoothstep(0.8, 0.2, length(uv - 0.5));
+    
+            // final mix with black background
+            vec3 color = mix(vec3(0.0), metal, fluid) * vign;
+    
+            gl_FragColor = vec4(color, 1.0);
+          }
+        `
+      });
+    
+      const mesh = new THREE.Mesh(geom, mat);
+      scene.add(mesh);
+    
+      // animation loop
+      let last = performance.now();
+      function animate() {
+        requestAnimationFrame(animate);
+        const now = performance.now();
+        const dt = (now - last) / 1000;
+        last = now;
+        // speed control
+        uniforms.u_time.value += dt * 0.6;
+        renderer.render(scene, camera);
+      }
+      animate();
+    
+      // resize logic
+      function onResize() {
+        updateRendererSize();
+        uniforms.u_resolution.value.set(renderer.domElement.width, renderer.domElement.height);
+      }
+      window.addEventListener("resize", onResize, { passive: true });
+    
+      // quick helper you can toggle in console if you only see black:
+      // 1) turn on debug gradient: window.bgDebug(true)
+      // 2) check canvas pixel size: window.bgCheck()
+      window.bgDebug = (on) => { uniforms.u_debug.value = on ? 1.0 : 0.0; };
+      window.bgCheck = () => {
+        console.log("canvas CSS size:", container.clientWidth, container.clientHeight);
+        console.log("canvas drawingBufferSize:", renderer.domElement.width, renderer.domElement.height);
+        console.log("devicePixelRatio:", window.devicePixelRatio);
+      };
+    
+      // sanity set initially
+      onResize();
+    });
+    </script>
 
     <main class="portfolio-container">
         <header class="glass-card">
