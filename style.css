@@ -5,18 +5,17 @@ body, html {
     height: 100%;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
     color: white;
-    overflow: hidden; /* Prevents scrollbars on the body */
+    background-color: #000; /* Set a solid black fallback background */
+    overflow: hidden;
 }
 
-.background-container {
+/* New rule for the animated background */
+#bg-canvas canvas {
     position: fixed;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
-    background: url('https://images.unsplash.com/photo-1554034483-04fda0d3507b?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1770&q=80') no-repeat center center/cover;
-    /* A colorful background is key for the effect to pop */
-    /* You can also use a gradient: background: linear-gradient(135deg, #6a11cb, #2575fc); */
     z-index: -1;
 }
 
@@ -27,17 +26,17 @@ body, html {
     gap: 2rem;
     align-items: center;
     height: 100vh;
-    overflow-y: auto; /* IMPORTANT: This makes the content scrollable over the fixed background */
-    box-sizing: border-box; /* Ensures padding is included in the height calculation */
+    overflow-y: auto;
+    box-sizing: border-box;
 }
 
 .glass-card {
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(20, 20, 20, 0.25); /* Darker glass for better contrast */
     backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px); /* For Safari compatibility */
+    -webkit-backdrop-filter: blur(12px);
     border-radius: 15px;
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
     padding: 1.5rem 2rem;
     width: 90%;
     max-width: 800px;
@@ -45,7 +44,7 @@ body, html {
 }
 
 .glass-card a {
-    color: #c7d2fe; /* A lighter color for links */
+    color: #e0e0e0;
     text-decoration: none;
 }
 
@@ -53,21 +52,12 @@ body, html {
     text-decoration: underline;
 }
 
-.card {
-    backdrop-filter: blur(7px) saturate(119%);
-    -webkit-backdrop-filter: blur(7px) saturate(119%);
-    background-color: rgba(17, 25, 40, 0);
-    border-radius: 12px;
-    border: 1px solid rgba(255, 255, 255, 0.125);
-}
-
-
 .video-container {
     position: relative;
-    padding-bottom: 56.25%; /* 16:9 aspect ratio */
+    padding-bottom: 56.25%;
     height: 0;
     overflow: hidden;
-    border-radius: 8px; /* Slightly rounded corners for the video embed */
+    border-radius: 8px;
     margin-bottom: 1rem;
 }
 
