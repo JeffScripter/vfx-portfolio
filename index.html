@@ -1,85 +1,326 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Your Name - VFX Portfolio</title>
-    <link rel="stylesheet" href="style.css">
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Liquid Metal Background</title>
+<style>
+  html,body { height:100%; margin:0; background:black; }
+  #bg-canvas-container {
+    position: fixed;
+    inset: 0;          /* top:0; right:0; bottom:0; left:0; */
+    width: 100vw;
+    height: 100vh;
+    z-index: -1;
+    pointer-events: none; /* allow clicking through */
+    background: black;
+  }
+</style>
 </head>
 <body>
-        <!-- required: a container somewhere in your HTML -->
-        <!-- Paste this after THREE.js is loaded -->
-    <div id="bg-canvas-container" style="position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:-1;"></div>
-    <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
-    <script>
-    const scene = new THREE.Scene();
-    const camera = new THREE.Camera();
-    camera.position.z = 1;
-    
-    const renderer = new THREE.WebGLRenderer();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    document.body.appendChild(renderer.domElement);
-    
-    const material = new THREE.ShaderMaterial({
+
+<div id="bg-canvas-container"></div>
+
+<!-- three.js -->
+<script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+
+<script>
+(() => {
+  // -------------------------
+  // CONFIG - tweak these
+  // -------------------------
+  const CONFIG = {
+    speed: 0.6,         // global animation speed
+    scale: 3.0,         // base noise scale (larger = bigger blobs)
+    contrast: 1.6,      // contrast of noise -> sharper metal
+    specularPower: 64.0,// shininess of chrome highlights
+    specularStrength: 1.4, // intensity of highlights
+    rimStrength: 0.18,  // rim light around blobs
+    mouseInfluence: 0.35 // how much mouse warps the fluid
+  };
+
+  // -------------------------
+  // Basic THREE setup
+  // -------------------------
+  const container = document.getElementById('bg-canvas-container');
+  if (!container) {
+    console.error('#bg-canvas-container missing');
+    return;
+  }
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.Camera(); // simple camera for fullscreen quad
+  camera.position.z = 1;
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  // initial size
+  function updateRendererSize() {
+    const w = Math.max(1, container.clientWidth);
+    const h = Math.max(1, container.clientHeight);
+    renderer.setSize(w, h, false); // drawing buffer updated
+    renderer.domElement.style.width = '100%';
+    renderer.domElement.style.height = '100%';
+  }
+  updateRendererSize();
+  container.appendChild(renderer.domElement);
+
+  // -------------------------
+  // Uniforms
+  // -------------------------
+  const uniforms = {
+    u_time: { value: 0.0 },
+    u_resolution: { value: new THREE.Vector2(renderer.domElement.width, renderer.domElement.height) },
+    u_mouse: { value: new THREE.Vector2(-10, -10) }, // off-screen initial
+    u_speed: { value: CONFIG.speed },
+    u_scale: { value: CONFIG.scale },
+    u_contrast: { value: CONFIG.contrast },
+    u_specPow: { value: CONFIG.specularPower },
+    u_specStrength: { value: CONFIG.specularStrength },
+    u_rim: { value: CONFIG.rimStrength },
+    u_mouseInfluence: { value: CONFIG.mouseInfluence }
+  };
+
+  // -------------------------
+  // Fullscreen quad + shader
+  // -------------------------
+  const geometry = new THREE.PlaneGeometry(2, 2);
+
+  const material = new THREE.ShaderMaterial({
+    uniforms,
     vertexShader: `
-    varying vec2 vUv;
-    void main(){
-    vUv = uv;
-    gl_Position = projectionMatrix *
-                  modelViewMatrix *
-                  vec4(position,1.0);
-    }
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
     `,
     fragmentShader: `
-    varying vec2 vUv;
-    void main(){
-    gl_FragColor = vec4(vUv,0.0,1.0);
+      precision highp float;
+      varying vec2 vUv;
+
+      uniform vec2 u_resolution;
+      uniform float u_time;
+      uniform vec2 u_mouse;
+
+      uniform float u_speed;
+      uniform float u_scale;
+      uniform float u_contrast;
+      uniform float u_specPow;
+      uniform float u_specStrength;
+      uniform float u_rim;
+      uniform float u_mouseInfluence;
+
+      // ---------------------
+      // 2D Simplex noise (classic compact GLSL)
+      // ---------------------
+      vec3 mod289(vec3 x){return x - floor(x*(1.0/289.0))*289.0;}
+      vec2 mod289(vec2 x){return x - floor(x*(1.0/289.0))*289.0;}
+      vec3 permute(vec3 x){return mod289(((x*34.0)+1.0)*x);}
+      float snoise(vec2 v){
+        const vec4 C = vec4(0.211324865405187, 0.366025403784439, -0.577350269189626, 0.024390243902439);
+        vec2 i = floor(v + dot(v, C.yy));
+        vec2 x0 = v - i + dot(i, C.xx);
+        vec2 i1 = (x0.x > x0.y) ? vec2(1.0,0.0) : vec2(0.0,1.0);
+        vec4 x12 = x0.xyxy + C.xxzz;
+        x12.xy -= i1;
+        i = mod289(i);
+        vec3 p = permute( permute( i.y + vec3(0.0, i1.y, 1.0 )) + i.x + vec3(0.0, i1.x, 1.0 ));
+        vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0);
+        m = m*m; m = m*m;
+        vec3 x = 2.0 * fract(p * C.www) - 1.0;
+        vec3 h = abs(x) - 0.5;
+        vec3 ox = floor(x + 0.5);
+        vec3 a0 = x - ox;
+        m *= 1.79284291400159 - 0.85373472095314 * ( a0*a0 + h*h );
+        vec3 g;
+        g.x = a0.x * x0.x + h.x * x0.y;
+        g.yz = a0.yz * x12.xz + h.yz * x12.yw;
+        return 130.0 * dot(m, g);
+      }
+
+      // ---------------------
+      // helper: fbm (fractal noise)
+      // ---------------------
+      float fbm(vec2 p) {
+        float total = 0.0;
+        float amp = 1.0;
+        float sc = 1.0;
+        for (int i = 0; i < 5; i++) {
+          total += snoise(p * sc) * amp;
+          sc *= 2.0;
+          amp *= 0.5;
+        }
+        return total;
+      }
+
+      // ---------------------
+      // compute a normal from height using derivatives
+      // ---------------------
+      vec3 computeNormal(float height, vec2 uv, float eps) {
+        float hL = fbm((uv + vec2(-eps,0.0)) * u_scale + u_time * 0.05);
+        float hR = fbm((uv + vec2( eps,0.0)) * u_scale + u_time * 0.05);
+        float hD = fbm((uv + vec2(0.0,-eps)) * u_scale + u_time * 0.05);
+        float hU = fbm((uv + vec2(0.0, eps)) * u_scale + u_time * 0.05);
+        vec3 n = normalize(vec3(hL - hR, hD - hU, 2.0 * eps));
+        return n;
+      }
+
+      void main() {
+        // correct aspect ratio
+        vec2 uv = vUv;
+        vec2 aspect = vec2(u_resolution.x / u_resolution.y, 1.0);
+        vec2 p = (uv - 0.5) * aspect;
+
+        // mouse influence (normalized to -1..1)
+        vec2 m = (u_mouse - vec2(0.5 * u_resolution.x, 0.5 * u_resolution.y)) / u_resolution.y;
+        // optional gentle warp
+        float dist = length(p - m * u_mouseInfluence);
+        float mouseEffect = exp(-dist * 6.0) * 2.0;
+
+        // layered animated noise
+        float t = u_time * u_speed;
+        float n0 = fbm(p * (u_scale * 0.6) + vec2( t * 0.35, -t * 0.25 ));
+        float n1 = fbm(p * u_scale + vec2(-t * 0.55, t * 0.45));
+        float n2 = fbm(p * (u_scale * 1.8) + vec2(t * 0.15, t * 0.05));
+
+        float n = n0 * 0.6 + n1 * 0.35 + n2 * 0.15;
+
+        // apply mouse warp into noise field
+        n += mouseEffect * 0.25;
+
+        // remap and contrast
+        n = n * 0.5 + 0.5;               // -1..1 -> 0..1
+        n = pow(n, 1.0 / max(0.0001, (0.7 + (1.0 - u_contrast) * 0.5))); // boost contrast
+
+        // fluid mask (controls where metal shows)
+        float mask = smoothstep(0.32, 0.78, n);
+
+        // estimate normals from the noise height field
+        vec3 N = computeNormal(n, p, 0.001);
+
+        // lighting - fake environment + specular
+        vec3 viewDir = normalize(vec3(0.0, 0.0, 1.0));
+        vec3 lightDir = normalize(vec3(0.5, 0.8, 0.4));
+
+        // diffuse (subtle)
+        float diff = max(dot(N, lightDir), 0.0) * 0.25;
+
+        // specular / blinn-phong
+        vec3 H = normalize(viewDir + lightDir);
+        float spec = pow(max(dot(N, H), 0.0), u_specPow) * u_specStrength;
+
+        // fresnel rim (makes chrome edges bright)
+        float fresnel = pow(1.0 - max(dot(N, viewDir), 0.0), 2.2) * u_rim;
+
+        // build metal color: dark base + mid + bright highlights
+        vec3 base = vec3(0.02, 0.02, 0.03);      // near-black base
+        vec3 mid  = vec3(0.12, 0.14, 0.16) + diff; // mid reflection tone
+        vec3 hi   = vec3(0.95, 0.98, 1.0) * spec;  // pure white highlights
+
+        vec3 metal = mix(base, mid, mask);
+        metal += hi;
+        metal += vec3(0.12) * fresnel * mask;
+
+        // subtle global tint + vignetting
+        float vign = smoothstep(1.0, 0.3, length((uv - 0.5) * vec2(u_resolution.x/u_resolution.y, 1.0)));
+        metal *= mix(0.95, 1.0, vign);
+
+        // final color: blend with black background
+        vec3 color = mix(vec3(0.0), metal, mask);
+
+        gl_FragColor = vec4(color, 1.0);
+      }
+    `,
+    depthWrite: false,
+    depthTest: false
+  });
+
+  const quad = new THREE.Mesh(geometry, material);
+  scene.add(quad);
+
+  // -------------------------
+  // Interaction
+  // -------------------------
+  function setMouseFromEvent(e) {
+    // support touch + mouse
+    const rect = renderer.domElement.getBoundingClientRect();
+    let x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+    let y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+    // store raw pixel coords so shader can compute aspect-correct influence
+    uniforms.u_mouse.value.set(x, u_resolution_y ? u_resolution_y - y : y);
+    // we also pass normalized if you prefer: (optional)
+  }
+
+  // track resolution helper for mouse flip
+  let u_resolution_y = renderer.domElement.height;
+
+  window.addEventListener('mousemove', (e) => {
+    const rect = renderer.domElement.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    // shader expects pixel coords where origin is bottom-left (WebGL)
+    uniforms.u_mouse.value.set(x, renderer.domElement.height - y);
+  }, { passive: true });
+
+  window.addEventListener('touchmove', (e) => {
+    const rect = renderer.domElement.getBoundingClientRect();
+    const x = e.touches[0].clientX - rect.left;
+    const y = e.touches[0].clientY - rect.top;
+    uniforms.u_mouse.value.set(x, renderer.domElement.height - y);
+  }, { passive: true });
+
+  // -------------------------
+  // Animation loop
+  // -------------------------
+  let last = performance.now();
+  function animate() {
+    requestAnimationFrame(animate);
+    const now = performance.now();
+    const dt = (now - last) / 1000;
+    last = now;
+
+    uniforms.u_time.value += dt;
+    // keep derived uniforms in sync if user tweaked CONFIG
+    uniforms.u_speed.value = CONFIG.speed;
+    uniforms.u_scale.value = CONFIG.scale;
+    uniforms.u_contrast.value = CONFIG.contrast;
+    uniforms.u_specPow.value = CONFIG.specularPower;
+    uniforms.u_specStrength.value = CONFIG.specularStrength;
+    uniforms.u_rim.value = CONFIG.rimStrength;
+    uniforms.u_mouseInfluence.value = CONFIG.mouseInfluence;
+
+    renderer.render(scene, camera);
+  }
+  animate();
+
+  // -------------------------
+  // Resize handling
+  // -------------------------
+  function onResize() {
+    updateRendererSize();
+    uniforms.u_resolution.value.set(renderer.domElement.width, renderer.domElement.height);
+    u_resolution_y = renderer.domElement.height;
+  }
+  window.addEventListener('resize', onResize, { passive: true });
+  // initial sync
+  onResize();
+
+  // -------------------------
+  // Quick debug helpers in console
+  // -------------------------
+  window.liquidMetal = {
+    uniforms,
+    config: CONFIG,
+    toggleDebugGradient(on) {
+      // quick debug: overlay a plain uv gradient (not used in shader currently)
+      // Instead, quickly set specularStrength to 0 to see base (for comparison)
+      uniforms.u_specStrength.value = on ? 0.0 : CONFIG.specularStrength;
     }
-    `
-    });
-    
-    const mesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(2,2),
-    material
-    );
-    
-    scene.add(mesh);
-    
-    renderer.render(scene,camera);
-    </script>
+  };
 
-    <main class="portfolio-container">
-        <header class="glass-card">
-            <h1>Your Name</h1>
-            <h2>VFX Artist / Motion Designer</h2>
-        </header>
+})();
+</script>
 
-        <section class="glass-card project">
-            <h3>Project Title 1: Demo Reel</h3>
-            <div class="video-container">
-                <!-- IMPORTANT: Replace the src with the embed link for your video -->
-                <iframe src="https://player.vimeo.com/video/123456789" frameborder="0" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>
-            </div>
-            <p>This is a short description of my work. I was responsible for compositing, lighting, and 3D modeling.</p>
-        </section>
-
-        <section class="glass-card project">
-            <h3>Project Title 2</h3>
-            <div class="video-container">
-                <!-- Get the embed code from YouTube or Vimeo and paste it here -->
-                 <iframe src="https://www.youtube.com/embed/your-video-id" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
-            </div>
-            <p>A brief description of the project and your specific role and contributions.</p>
-        </section>
-
-        <footer class="glass-card">
-            <p>Contact me: your.email@example.com</p>
-            <p><a href="https://www.linkedin.com/in/your-profile/">LinkedIn</a> | <a href="https://www.artstation.com/your-profile">ArtStation</a></p>
-        </footer>
-    </main>
-
-    <!-- Add the three.js library and our sketch file -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="sketch.js"></script>
 </body>
 </html>
