@@ -105,15 +105,14 @@ canvas {
 
 .glassy-container {
   position: fixed;
-  z-index: 10;        
+  z-index: 10;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  background: rgba(255,255,255,0.08);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255,255,255,0.15);
-  border-radius: 16px;
-  padding: 2rem;
+  
+  background: rgba(0, 0, 0, 0.85);  /* temporarily very opaque */
   color: #fff;
+  padding: 2rem;
+  border-radius: 16px;
+  border: 2px solid red;             /* debug border */
 }
