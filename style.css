@@ -103,16 +103,18 @@ canvas {
 }
 
 .glassy-container {
-  background-color: rgba(255, 255, 255, 0.3); /* Semi-transparent background */
-  backdrop-filter: blur(20px); /* Strong blur for a very glassy look */
-  -webkit-backdrop-filter: blur(20px); /* Safari & older browsers */
-  border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.4);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-  position:fixed;
-  top:50%;
-  left:50%;
-  transform:translate(-50%,-50%);
-  z-index:10;
-}   
+  position: fixed;       /* lifts it out of page flow */
+  z-index: 10;           /* above the canvas */
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
 
+  /* style it however you want from here */
+  background: rgba(255,255,255,0.08);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 16px;
+  padding: 2rem;
+  color: #fff;
+}
