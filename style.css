@@ -103,13 +103,11 @@ canvas {
 }
 
 .glassy-container {
-  position: fixed;       /* lifts it out of page flow */
-  z-index: 10;           /* above the canvas */
+  position: fixed;
+  z-index: 10;        
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-
-  /* style it however you want from here */
   background: rgba(255,255,255,0.08);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
