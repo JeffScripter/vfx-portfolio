@@ -5,12 +5,13 @@ html, body {
   overflow: hidden;
 }
 canvas {
-  position: fixed;
-  top: 0;
-  left: 0;
+  display: block;
   width: 100vw;
   height: 100vh;
-  z-index: -1;
+  position: fixed;   /* add this */
+  z-index: 0;        /* add this */
+  top: 0;
+  left: 0;
 }
 /* Updated rule for the WebGL background container */
 #bg-canvas-container {
