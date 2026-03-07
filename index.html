@@ -1,16 +1,21 @@
 <!doctype html>
 <html lang="en">
 <head>
+<link rel="stylesheet" href="style.css">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">   
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Liquid Chrome</title>
+<!-- From Uiverse.io by SelfMadeSystem --> 
+<div class="container"></div>
+
 <style>
   *{margin:0;padding:0;box-sizing:border-box}
-  html,body{width:100%;height:100%;background:#000;overflow:hidden;cursor:none}
+  html,body{width:100%;height:100%;background:linear-gradient(#ffffff, #000000);overflow:hidden;cursor:none}
   canvas{display:block;width:100vw;height:100vh}
   #cur{
     position:fixed;width:4px;height:4px;border-radius:50%;
-    background:#fff;pointer-events:none;transform:translate(-50%,-50%);
+    background:#ffffff;pointer-events:none;transform:translate(-50%,-50%);
     mix-blend-mode:difference;z-index:99;
   }
 </style>
@@ -18,10 +23,10 @@
 <body>
 <canvas id="c"></canvas>
 <div id="cur"></div>
-<div class="glassy-container">
-  <h2>Spotlight Card</h2>
-  <p>This card has a spotlight hover effect.</p>
-</div>
+<div class="glassy-top"></div>
+<button class="glassy-island">
+  <p>Prices</p>
+</button>
 <script>
 (() => {
   const cur = document.getElementById('cur');
@@ -183,6 +188,7 @@
     float asp=u_res.x/u_res.y;
     float t  =u_time;
     vec3  col=vec3(0.0);
+    float alphaAccum = 0.0;
 
     for(int s=0;s<${Q.msaa};s++){
       vec2 jit=jitter(s)/u_res;
@@ -233,9 +239,11 @@
         sc=(refl*occl+fringe)*edgeDark;
       }
 
+      if(hit) alphaAccum += 1.0;
       col+=sc;
     }
     col/=float(${Q.msaa});
+    float alpha = alphaAccum > 0.0 ? 1.0 : 0.0;
 
     col*=0.80;
     col=(col*(2.51*col+0.03))/(col*(2.43*col+0.59)+0.14);
@@ -250,7 +258,7 @@
     col=clamp(col,0.0,1.0);
     col=pow(max(col,0.0),vec3(1.0/2.2));
 
-    gl_FragColor=vec4(col,1.0);
+    gl_FragColor=vec4(col,alpha);
   }`;
 
   function mkS(type,src){
@@ -276,6 +284,8 @@
   gl.vertexAttribPointer(posLoc,2,gl.FLOAT,false,0,0);
 
   gl.useProgram(prog);
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
   const uRes  =gl.getUniformLocation(prog,'u_res');
   const uTime =gl.getUniformLocation(prog,'u_time');
   const uMouse=gl.getUniformLocation(prog,'u_mouse');
